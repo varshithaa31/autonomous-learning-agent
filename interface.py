@@ -2,111 +2,139 @@ import streamlit as st
 import re
 from engine import learning_graph
 
+# --- 1. CONFIG & SESSION STATE ---
+st.set_page_config(page_title="AI Learning Agent", page_icon="🧠", layout="wide")
+
+if "history" not in st.session_state:
+    st.session_state.update({
+        "logged_in": False, "history": [], "total_subs": 0,
+        "agent_state": None, "mode": "Academic", "view": "Content",
+        "current_attempts": 0, "last_score": 0
+    })
+
 def parse_mcqs(quiz_str):
     questions = []
-    blocks = re.split(r'Q:', quiz_str)[1:] 
+    blocks = re.split(r'Q:', quiz_str)[1:]
     for block in blocks:
-        lines = [line.strip() for line in block.strip().split('\n') if line.strip()]
-        if len(lines) < 4: continue
-        q_text = lines[0]
-        options = [l for l in lines if l.startswith(('A)', 'B)', 'C)'))]
+        lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
         ans_match = re.search(r'Answer:\s*([A-C])', block)
-        if q_text and len(options) >= 3 and ans_match:
-            questions.append({"question": q_text, "options": options, "answer": ans_match.group(1)})
+        if len(lines) >= 4 and ans_match:
+            questions.append({"q": lines[0], "opts": [l for l in lines if l[1:3] == ') '], "a": ans_match.group(1)})
     return questions
 
-# 1. State Initialization
-if "agent_state" not in st.session_state:
-    st.session_state.agent_state = None
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "show_decision" not in st.session_state:
-    st.session_state.show_decision = False
-if "finished" not in st.session_state:
-    st.session_state.finished = False
+# --- 2. LOGIN PAGE (Empty Fields) ---
+if not st.session_state.logged_in:
+    st.markdown("<h1 style='text-align: center;'>🧠 AI Learning Agent</h1>", unsafe_allow_html=True)
+    with st.columns([1, 1.5, 1])[1]:
+        st.subheader("Login")
+        email = st.text_input("Email", value="", placeholder="Enter email")
+        pw = st.text_input("Password", type="password", value="")
+        if st.button("Login", use_container_width=True, type="primary"):
+            if email and pw:
+                st.session_state.logged_in = True
+                st.rerun()
+            else:
+                st.error("Credentials required.")
+    st.stop()
 
-st.set_page_config(page_title="AI Mastery Tutor", layout="wide")
-
-# --- SIDEBAR: LEARNING PROGRESS ---
+# --- 3. SIDEBAR (Mastery Stats) ---
 with st.sidebar:
-    st.header("📈 Your Progress")
-    if not st.session_state.history:
-        st.write("No topics mastered yet.")
-    for i, topic in enumerate(st.session_state.history):
-        st.success(f"✅ {topic}")
-    if st.session_state.history:
-        st.divider()
-        st.metric("Topics Completed", len(st.session_state.history))
+    st.markdown("### 📊 Mastery Stats")
+    mastered_count = len(st.session_state.history)
+    eff = (mastered_count / st.session_state.total_subs * 100) if st.session_state.total_subs > 0 else 0.0
+    st.metric("Efficiency Rate", f"{eff:.1f}%")
+    st.metric("Topics Mastered", mastered_count)
+    st.divider()
+    st.markdown("### 📁 Knowledge Vault")
+    for item in st.session_state.history:
+        with st.container(border=True):
+            st.markdown(f"**{item['topic']}**")
+            st.caption(f"{item['attempts']} attempt(s)") #
+    if st.button("Logout", use_container_width=True):
+        st.session_state.logged_in = False
+        st.rerun()
 
-# --- UI FLOWS ---
-if st.session_state.finished:
-    st.title("🎓 Journey Complete")
-    st.balloons()
-    st.success("Thank you for learning! You've successfully expanded your knowledge base.")
-    if st.button("Start New Session"):
-        st.session_state.clear()
+# --- 4. NAVIGATION LOGIC ---
+
+# PROFESSIONAL END SESSION VIEW
+if st.session_state.view == "EndSession":
+    st.title("🏁 Learning Session Concluded")
+    st.success("### Professional Summary: Mastery Achieved")
+    st.write("You have successfully completed your learning modules for today. All progress has been logged in your Knowledge Vault.")
+    st.info("Continuous learning is the key to expertise. Great job staying focused!")
+    if st.button("Start New Learning Session", type="primary"):
+        st.session_state.update({"agent_state": None, "view": "Content", "mode": "Academic", "history": [], "total_subs": 0})
         st.rerun()
     st.stop()
 
+# TOPIC INPUT (Loading: Generating explanation...)
 if st.session_state.agent_state is None:
     st.title("🧠 Master a New Topic")
-    user_topic = st.text_input("What would you like to learn about?")
-    if st.button("Begin Lesson"):
-        if user_topic:
-            with st.spinner("Preparing detailed lesson..."):
-                st.session_state.agent_state = learning_graph.invoke({"topic": user_topic, "is_feynman": False})
-                st.session_state.show_decision = False
-                st.rerun()
+    topic = st.text_input("Enter topic:", placeholder="e.g., Photosynthesis")
+    if st.button("Start Learning", type="primary"):
+        with st.spinner("Generating explanation..."):
+            st.session_state.agent_state = learning_graph.invoke({"topic": topic})
+            st.session_state.current_attempts = 0
+            st.session_state.view = "Content"
+            st.rerun()
     st.stop()
 
-# --- ACTIVE LESSON ---
 state = st.session_state.agent_state
-st.title(f"Topic: {state['topic']}")
-st.markdown(state["explanation"])
 
-if state.get("is_feynman"):
-    st.divider()
-    st.warning("💡 **Feynman Simplification:**")
-    st.markdown(state["feynman_text"])
-
-st.divider()
-st.subheader("📝 Practice Quiz")
-quiz_data = parse_mcqs(state["questions"])
-
-# If already passed, show results and next-step prompt
-if st.session_state.show_decision:
-    st.success(f"🎯 100% Mastery Achieved for {state['topic']}!")
-    st.write("### Would you like to learn the next topic?")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ Yes, keep going!"):
-            st.session_state.history.append(state['topic'])
-            st.session_state.agent_state = None
-            st.session_state.show_decision = False
+# QUIZ PAGE (Displaying Attempt Number)
+if st.session_state.view == "Quiz":
+    st.markdown(f"### 📝 Assessment: {state['topic']}")
+    st.info(f"**Attempt Number: {st.session_state.current_attempts + 1}**")
+    
+    q_list = parse_mcqs(state["questions"])
+    with st.form("quiz_page"):
+        user_ans = []
+        for i, q in enumerate(q_list[:5]):
+            st.markdown(f"**Q{i+1}: {q['q']}**")
+            user_ans.append(st.radio("Select Answer:", q['opts'], key=f"q{i}", label_visibility="collapsed")[0])
+        if st.form_submit_button("Submit Assessment", use_container_width=True):
+            st.session_state.total_subs += 1
+            st.session_state.current_attempts += 1
+            score = sum(1 for i, q in enumerate(q_list[:5]) if user_ans[i] == q['a']) / 5
+            st.session_state.last_score = int(score * 100)
+            if score >= 0.75:
+                st.session_state.history.append({"topic": state["topic"], "attempts": st.session_state.current_attempts})
+                st.session_state.view = "PostQuizSuccess"
+            else:
+                st.session_state.view = "PostQuizFail"
             st.rerun()
-    with col2:
-        if st.button("❌ No, I'm finished"):
-            st.session_state.history.append(state['topic'])
-            st.session_state.finished = True
-            st.rerun()
-else:
-    # Show Quiz Form
-    if quiz_data:
-        with st.form(key=f"quiz_{state['topic']}"):
-            user_responses = []
-            for i, q in enumerate(quiz_data):
-                st.write(f"**Q{i+1}: {q['question']}**")
-                choice = st.radio("Select:", q['options'], key=f"q_{i}", label_visibility="collapsed")
-                user_responses.append(choice[0])
-            
-            if st.form_submit_button("Submit Answers"):
-                correct = sum(1 for i, q in enumerate(quiz_data) if user_responses[i] == q['answer'])
-                score = int((correct / len(quiz_data)) * 100)
-                
-                if score >= 75:
-                    st.session_state.show_decision = True
-                    st.rerun()
-                else:
-                    st.error(f"Score: {score}%. Let's try the Feynman Loop...")
-                    st.session_state.agent_state = learning_graph.invoke({**state, "is_feynman": True})
-                    st.rerun()
+    st.stop()
+
+# SUCCESS SCREEN (Next Steps Options)
+if st.session_state.view == "PostQuizSuccess":
+    st.success(f"### 🎊 Mastery Achieved! \nScore: **{st.session_state.last_score}%**")
+    c1, c2 = st.columns(2)
+    if c1.button("Learn Next Topic", use_container_width=True, type="primary"):
+        st.session_state.agent_state = None
+        st.session_state.view = "Content"
+        st.rerun()
+    if c2.button("End Learning Session", use_container_width=True):
+        st.session_state.view = "EndSession"
+        st.rerun()
+    st.stop()
+
+# FAILURE SCREEN (Encouraging Message)
+if st.session_state.view == "PostQuizFail":
+    st.error(f"### ⚠️ Assessment Failed \nScore: **{st.session_state.last_score}%**")
+    st.markdown("##### It's okay, let's learn simpler using Feynman explanation")
+    if st.button("Proceed to Detailed Analogy", use_container_width=True):
+        st.session_state.mode = "Feynman"
+        st.session_state.view = "Content"
+        st.rerun()
+    st.stop()
+
+# MAIN CONTENT VIEW
+st.title(f"Focus: {state['topic']}")
+st.subheader("💡 Feynman Analogy" if st.session_state.mode == "Feynman" else "📖 Academic Breakdown")
+st.write(state["feynman_text"] if st.session_state.mode == "Feynman" else state["explanation"])
+
+if st.button("Attempt Quiz" if st.session_state.mode == "Academic" else "Re-Attempt Quiz", use_container_width=True, type="primary"):
+    with st.spinner("Preparing quiz..."):
+        st.session_state.agent_state = learning_graph.invoke({"topic": state["topic"]})
+        st.session_state.view = "Quiz"
+        st.rerun()
