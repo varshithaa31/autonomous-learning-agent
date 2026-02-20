@@ -1,5 +1,8 @@
 import os
+from dotenv import load_dotenv
+import os
 import re
+load_dotenv()
 from typing import TypedDict, List
 from dotenv import load_dotenv  # Ensure this is imported
 from langgraph.graph import StateGraph, END
