@@ -1,15 +1,12 @@
 import os
-from dotenv import load_dotenv
-import os
 import re
-load_dotenv()
 from typing import TypedDict, List
-from dotenv import load_dotenv  # Ensure this is imported
+from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
 
-# --- THIS LINE IS THE FIX ---
-load_dotenv() 
+# Load environment variables
+load_dotenv()
 
 class AgentState(TypedDict):
     topic: str
@@ -19,11 +16,13 @@ class AgentState(TypedDict):
     attempt_count: int
     error: str
 
-# Use groq_api_key as the parameter name
+# Use the secure environment variable
 llm = ChatGroq(
     model="llama-3.1-8b-instant", 
     groq_api_key=os.getenv("GROQ_API_KEY") 
 )
+
+# ... (keep the rest of your graph logic below)
 
 def learning_engine(state: AgentState):
     topic = state.get("topic", "")
