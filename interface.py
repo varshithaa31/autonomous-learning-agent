@@ -88,7 +88,7 @@ def draw_sidebar():
     with st.sidebar:
         st.markdown(f"<h1 style='color:#38bdf8; font-size: 2.8rem; margin-bottom: 0;'>👤 {st.session_state.get('user', 'User')}</h1>", unsafe_allow_html=True)
         st.divider()
-        if st.button("📊 VIEW LEARNING HISTORY", use_container_width=True):
+        if st.button("📊 VIEW FULL HISTORY", use_container_width=True):
             st.session_state.view = "History"; st.rerun()
         st.markdown("<br><p style='color:#94a3b8; font-weight:600; font-size:0.9rem;'>KNOWLEDGE VAULT</p>", unsafe_allow_html=True)
         if not st.session_state.history:
@@ -107,7 +107,7 @@ if "attempt" not in st.session_state: st.session_state.attempt = 1
 
 # --- AUTH ---
 if st.session_state.view == "Auth":
-    st.markdown("<h1 class='main-header'>Mastery AI Learning Agent</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>Mastery AI Portal</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         auth_email = st.text_input("Email")
@@ -135,8 +135,8 @@ elif st.session_state.view == "Dashboard":
     draw_sidebar()
     st.markdown(f"<h1 class='main-header'>Welcome, {st.session_state.user}</h1>", unsafe_allow_html=True)
     topic = st.text_input("What complex topic shall we master today?")
-    if st.button("START LEARNING", use_container_width=True):
-        with st.spinner("Generating Info..."):
+    if st.button("BEGIN ANALYSIS", use_container_width=True):
+        with st.spinner("Processing..."):
             res = learning_graph.invoke({"topic": topic, "attempt_count": 1})
             st.session_state.update({"topic": topic, "agent_data": res, "view": "Explanation", "attempt": 1}); st.rerun()
 
@@ -178,8 +178,8 @@ elif st.session_state.view == "Result":
     draw_sidebar()
     score, quiz, u_ans = st.session_state.score, st.session_state.agent_data['quiz_data'], st.session_state.user_ans
     current_time = datetime.now().strftime("%Y-%m-%d, %H:%M")
-    if score >= 70: st.success(f"Score: {score}% — Congratulations! You've mastered this topic.")
-    else: st.error(f"Current Score: {score}% — Let's reinforce the concept with a Feynman analogy.")
+    if score >= 70: st.success(f"Score: {score}% — Congratulations!")
+    else: st.error(f"Current Score: {score}% — Let's reinforce!")
     
     for i, q in enumerate(quiz):
         status_class = "correct-card" if u_ans[i][0] == q['a'] else "wrong-card"
@@ -196,7 +196,7 @@ elif st.session_state.view == "Result":
         if col2.button("END LEARNING SESSION", use_container_width=True): 
             st.session_state.view = "End"; st.rerun()
     else:
-        if st.button("FEYNMAN EXPLANATION", use_container_width=True): 
+        if st.button("FEYNMAN REINFORCEMENT", use_container_width=True): 
             st.session_state.view = "Feynman"; st.rerun()
 
 # --- FEYNMAN ---
