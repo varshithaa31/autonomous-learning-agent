@@ -1,140 +1,229 @@
 import streamlit as st
-import re
+import json
+import os
+from datetime import datetime
 from engine import learning_graph
 
-# --- 1. CONFIG & SESSION STATE ---
-st.set_page_config(page_title="AI Learning Agent", page_icon="🧠", layout="wide")
+# --- PERSISTENCE HELPERS ---
+DB_FILE = "users_db.json"
 
-if "history" not in st.session_state:
-    st.session_state.update({
-        "logged_in": False, "history": [], "total_subs": 0,
-        "agent_state": None, "mode": "Academic", "view": "Content",
-        "current_attempts": 0, "last_score": 0
-    })
+def load_users():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r") as f:
+                return json.load(f)
+        except: return {}
+    return {}
 
-def parse_mcqs(quiz_str):
-    questions = []
-    blocks = re.split(r'Q:', quiz_str)[1:]
-    for block in blocks:
-        lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
-        ans_match = re.search(r'Answer:\s*([A-C])', block)
-        if len(lines) >= 4 and ans_match:
-            questions.append({"q": lines[0], "opts": [l for l in lines if l[1:3] == ') '], "a": ans_match.group(1)})
-    return questions
+def save_db(db):
+    with open(DB_FILE, "w") as f:
+        json.dump(db, f, indent=4)
 
-# --- 2. LOGIN PAGE (Empty Fields) ---
-if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center;'>🧠 AI Learning Agent</h1>", unsafe_allow_html=True)
-    with st.columns([1, 1.5, 1])[1]:
-        st.subheader("Login")
-        email = st.text_input("Email", value="", placeholder="Enter email")
-        pw = st.text_input("Password", type="password", value="")
-        if st.button("Login", use_container_width=True, type="primary"):
-            if email and pw:
-                st.session_state.logged_in = True
-                st.rerun()
-            else:
-                st.error("Credentials required.")
-    st.stop()
+st.set_page_config(page_title="Mastery Portal", layout="wide")
 
-# --- 3. SIDEBAR (Mastery Stats) ---
-with st.sidebar:
-    st.markdown("### 📊 Mastery Stats")
-    mastered_count = len(st.session_state.history)
-    eff = (mastered_count / st.session_state.total_subs * 100) if st.session_state.total_subs > 0 else 0.0
-    st.metric("Efficiency Rate", f"{eff:.1f}%")
-    st.metric("Topics Mastered", mastered_count)
-    st.divider()
-    st.markdown("### 📁 Knowledge Vault")
-    for item in st.session_state.history:
-        with st.container(border=True):
-            st.markdown(f"**{item['topic']}**")
-            st.caption(f"{item['attempts']} attempt(s)") #
-    if st.button("Logout", use_container_width=True):
-        st.session_state.logged_in = False
-        st.rerun()
-
-# --- 4. NAVIGATION LOGIC ---
-
-# PROFESSIONAL END SESSION VIEW
-if st.session_state.view == "EndSession":
-    st.title("🏁 Learning Session Concluded")
-    st.success("### Professional Summary: Mastery Achieved")
-    st.write("You have successfully completed your learning modules for today. All progress has been logged in your Knowledge Vault.")
-    st.info("Continuous learning is the key to expertise. Great job staying focused!")
-    if st.button("Start New Learning Session", type="primary"):
-        st.session_state.update({"agent_state": None, "view": "Content", "mode": "Academic", "history": [], "total_subs": 0})
-        st.rerun()
-    st.stop()
-
-# TOPIC INPUT (Loading: Generating explanation...)
-if st.session_state.agent_state is None:
-    st.title("🧠 Master a New Topic")
-    topic = st.text_input("Enter topic:", placeholder="e.g., Photosynthesis")
-    if st.button("Start Learning", type="primary"):
-        with st.spinner("Generating explanation..."):
-            st.session_state.agent_state = learning_graph.invoke({"topic": topic})
-            st.session_state.current_attempts = 0
-            st.session_state.view = "Content"
-            st.rerun()
-    st.stop()
-
-state = st.session_state.agent_state
-
-# QUIZ PAGE (Displaying Attempt Number)
-if st.session_state.view == "Quiz":
-    st.markdown(f"### 📝 Assessment: {state['topic']}")
-    st.info(f"**Attempt Number: {st.session_state.current_attempts + 1}**")
+# --- CSS ENHANCEMENTS: RADIANT BLUE GRADIENT THEME ---
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
     
-    q_list = parse_mcqs(state["questions"])
-    with st.form("quiz_page"):
-        user_ans = []
-        for i, q in enumerate(q_list[:5]):
-            st.markdown(f"**Q{i+1}: {q['q']}**")
-            user_ans.append(st.radio("Select Answer:", q['opts'], key=f"q{i}", label_visibility="collapsed")[0])
-        if st.form_submit_button("Submit Assessment", use_container_width=True):
-            st.session_state.total_subs += 1
-            st.session_state.current_attempts += 1
-            score = sum(1 for i, q in enumerate(q_list[:5]) if user_ans[i] == q['a']) / 5
-            st.session_state.last_score = int(score * 100)
-            if score >= 0.75:
-                st.session_state.history.append({"topic": state["topic"], "attempts": st.session_state.current_attempts})
-                st.session_state.view = "PostQuizSuccess"
-            else:
-                st.session_state.view = "PostQuizFail"
-            st.rerun()
-    st.stop()
+    /* Radiant Blue Gradient Background */
+    .stApp { 
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e40af 100%) !important; 
+        color: #f1f5f9 !important; 
+        font-family: 'Inter', sans-serif !important; 
+    }
+    
+    /* Header with glow effect */
+    .main-header { 
+        background: linear-gradient(135deg, #ffffff 0%, #38bdf8 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        font-size: 4rem !important; font-weight: 800; text-align: center; margin-bottom: 40px;
+        letter-spacing: -2px;
+        filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.3));
+    }
+    
+    p, li, label, div { font-size: 1.2rem !important; color: #f1f5f9 !important; }
+    
+    /* Content Box with semi-transparent depth */
+    .content-box { 
+        background: rgba(15, 23, 42, 0.6); 
+        backdrop-filter: blur(12px);
+        padding: 45px; border-radius: 28px; 
+        border: 1px solid rgba(56, 189, 248, 0.2); line-height: 1.9;
+        font-size: 1.3rem !important; color: #f1f5f9; border-left: 8px solid #38bdf8;
+    }
+    
+    .feedback-card { padding: 25px; border-radius: 18px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1); }
+    .correct-card { background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; }
+    .wrong-card { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; }
+    
+    /* Highlighted Buttons */
+    .stButton>button { 
+        background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%) !important;
+        color: #ffffff !important;
+        border: 2px solid #38bdf8 !important;
+        border-radius: 14px; 
+        font-weight: 800; 
+        padding: 0.8rem 2rem; 
+        font-size: 1.1rem !important;
+        box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.4);
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%) !important;
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0px 12px 30px rgba(56, 189, 248, 0.4);
+        border-color: #ffffff !important;
+    }
 
-# SUCCESS SCREEN (Next Steps Options)
-if st.session_state.view == "PostQuizSuccess":
-    st.success(f"### 🎊 Mastery Achieved! \nScore: **{st.session_state.last_score}%**")
-    c1, c2 = st.columns(2)
-    if c1.button("Learn Next Topic", use_container_width=True, type="primary"):
-        st.session_state.agent_state = None
-        st.session_state.view = "Content"
-        st.rerun()
-    if c2.button("End Learning Session", use_container_width=True):
-        st.session_state.view = "EndSession"
-        st.rerun()
-    st.stop()
+    /* Sidebar Highlight */
+    [data-testid="stSidebar"] {
+        background-color: rgba(15, 23, 42, 0.8) !important;
+        border-right: 1px solid rgba(56, 189, 248, 0.1);
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# FAILURE SCREEN (Encouraging Message)
-if st.session_state.view == "PostQuizFail":
-    st.error(f"### ⚠️ Assessment Failed \nScore: **{st.session_state.last_score}%**")
-    st.markdown("##### It's okay, let's learn simpler using Feynman explanation")
-    if st.button("Proceed to Detailed Analogy", use_container_width=True):
-        st.session_state.mode = "Feynman"
-        st.session_state.view = "Content"
-        st.rerun()
-    st.stop()
+def draw_sidebar():
+    with st.sidebar:
+        st.markdown(f"<h1 style='color:#38bdf8; font-size: 2.8rem; margin-bottom: 0;'>👤 {st.session_state.get('user', 'User')}</h1>", unsafe_allow_html=True)
+        st.divider()
+        if st.button("📊 VIEW LEARNING HISTORY", use_container_width=True):
+            st.session_state.view = "History"; st.rerun()
+        st.markdown("<br><p style='color:#94a3b8; font-weight:600; font-size:0.9rem;'>KNOWLEDGE VAULT</p>", unsafe_allow_html=True)
+        if not st.session_state.history:
+            st.info("No mastered topics yet.")
+        else:
+            for item in st.session_state.history:
+                st.markdown(f"<div style='background:rgba(30,41,59,0.6); padding:12px; border-radius:10px; border-left:4px solid #38bdf8; margin-bottom:10px;'><b>{item['topic']}</b><br><small>Attempts: {item['attempts']}</small></div>", unsafe_allow_html=True)
+        st.divider()
+        if st.button("Logout", use_container_width=True): 
+            st.session_state.view = "Auth"; st.session_state.user = None; st.session_state.email = None; st.rerun()
 
-# MAIN CONTENT VIEW
-st.title(f"Focus: {state['topic']}")
-st.subheader("💡 Feynman Analogy" if st.session_state.mode == "Feynman" else "📖 Academic Breakdown")
-st.write(state["feynman_text"] if st.session_state.mode == "Feynman" else state["explanation"])
+# --- INITIALIZE ---
+if "history" not in st.session_state: st.session_state.history = []
+if "view" not in st.session_state: st.session_state.view = "Auth"
+if "attempt" not in st.session_state: st.session_state.attempt = 1
 
-if st.button("Attempt Quiz" if st.session_state.mode == "Academic" else "Re-Attempt Quiz", use_container_width=True, type="primary"):
-    with st.spinner("Preparing quiz..."):
-        st.session_state.agent_state = learning_graph.invoke({"topic": state["topic"]})
-        st.session_state.view = "Quiz"
-        st.rerun()
+# --- AUTH ---
+if st.session_state.view == "Auth":
+    st.markdown("<h1 class='main-header'>Mastery AI Learning Agent</h1>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        auth_email = st.text_input("Email")
+        auth_pwd = st.text_input("Password", type="password")
+        db = load_users()
+        if auth_email in db:
+            st.info(f"Welcome back, {db[auth_email]['u']}!")
+            if st.button("SIGN IN", use_container_width=True):
+                if auth_pwd == db[auth_email]['p']:
+                    st.session_state.update({"user": db[auth_email]['u'], "email": auth_email, "history": db[auth_email].get('h', []), "view": "Dashboard"})
+                    st.rerun()
+                else: st.error("Invalid password.")
+        elif auth_email:
+            st.warning("No account found. Enter a username to register.")
+            auth_user = st.text_input("New Username")
+            if st.button("CREATE ACCOUNT & ENTER", use_container_width=True):
+                if auth_user and auth_pwd:
+                    db[auth_email] = {'u': auth_user, 'p': auth_pwd, 'h': []}
+                    save_db(db)
+                    st.session_state.update({"user": auth_user, "email": auth_email, "history": [], "view": "Dashboard"})
+                    st.rerun()
+
+# --- DASHBOARD ---
+elif st.session_state.view == "Dashboard":
+    draw_sidebar()
+    st.markdown(f"<h1 class='main-header'>Welcome, {st.session_state.user}</h1>", unsafe_allow_html=True)
+    topic = st.text_input("What complex topic shall we master today?")
+    if st.button("START LEARNING", use_container_width=True):
+        with st.spinner("Generating Info..."):
+            res = learning_graph.invoke({"topic": topic, "attempt_count": 1})
+            st.session_state.update({"topic": topic, "agent_data": res, "view": "Explanation", "attempt": 1}); st.rerun()
+
+# --- HISTORY ---
+elif st.session_state.view == "History":
+    draw_sidebar()
+    st.markdown("<h1 class='main-header'>Mastery Log</h1>", unsafe_allow_html=True)
+    if st.session_state.history:
+        display_data = [{"S.No": i+1, "Topic Mastered": it['topic'], "Session": it['session'], "Attempts": it['attempts'], "Score": it['score']} for i, it in enumerate(st.session_state.history)]
+        st.table(display_data)
+    else: st.info("No learning history found.")
+    if st.button("Back to Dashboard"): st.session_state.view = "Dashboard"; st.rerun()
+
+# --- EXPLANATION ---
+elif st.session_state.view == "Explanation":
+    draw_sidebar()
+    st.markdown(f"<h2 style='text-align:center; color:#38bdf8;'>{st.session_state.topic}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<div class='content-box'>{st.session_state.agent_data['explanation']}</div>", unsafe_allow_html=True)
+    if st.button("PROCEED TO ASSESSMENT", use_container_width=True): st.session_state.view = "Quiz"; st.rerun()
+
+# --- QUIZ ---
+elif st.session_state.view == "Quiz":
+    draw_sidebar()
+    quiz = st.session_state.agent_data['quiz_data']
+    st.markdown(f"<h1 class='main-header'>Assessment ({st.session_state.attempt})</h1>", unsafe_allow_html=True)
+    with st.form("quiz_form"):
+        for i, q in enumerate(quiz):
+            st.markdown(f"<h3 style='color:#38bdf8;'>Question {i+1}</h3>", unsafe_allow_html=True)
+            st.write(q['q'])
+            st.radio("Options:", q['opts'], key=f"q_{i}", label_visibility="collapsed")
+            st.divider()
+        if st.form_submit_button("SUBMIT ASSESSMENT", use_container_width=True):
+            u_ans = [st.session_state[f"q_{i}"] for i in range(len(quiz))]
+            correct = sum(1 for i, q in enumerate(quiz) if u_ans[i][0] == q['a'])
+            st.session_state.update({"score": (correct/5)*100, "user_ans": u_ans, "view": "Result"}); st.rerun()
+
+# --- RESULT ---
+elif st.session_state.view == "Result":
+    draw_sidebar()
+    score, quiz, u_ans = st.session_state.score, st.session_state.agent_data['quiz_data'], st.session_state.user_ans
+    current_time = datetime.now().strftime("%Y-%m-%d, %H:%M")
+    if score >= 70: st.success(f"Score: {score}% — Congratulations! You've mastered this topic.")
+    else: st.error(f"Current Score: {score}% — Let's reinforce the concept with a Feynman analogy.")
+    
+    for i, q in enumerate(quiz):
+        status_class = "correct-card" if u_ans[i][0] == q['a'] else "wrong-card"
+        st.markdown(f"<div class='feedback-card {status_class}'><b>{i+1}. {q['q']}</b><br>Your Answer: {u_ans[i]}<br>Correct: {q['a']}<br><i>{q['exp']}</i></div>", unsafe_allow_html=True)
+    
+    if score >= 70:
+        if not any(it['topic'] == st.session_state.topic for it in st.session_state.history):
+            st.session_state.history.append({"topic": st.session_state.topic, "score": f"{score}%", "attempts": st.session_state.attempt, "session": current_time})
+            db = load_users(); db[st.session_state.email]['h'] = st.session_state.history; save_db(db)
+        
+        col1, col2 = st.columns(2)
+        if col1.button("NEW TOPIC", use_container_width=True): 
+            st.session_state.view = "Dashboard"; st.rerun()
+        if col2.button("END LEARNING SESSION", use_container_width=True): 
+            st.session_state.view = "End"; st.rerun()
+    else:
+        if st.button("FEYNMAN EXPLANATION", use_container_width=True): 
+            st.session_state.view = "Feynman"; st.rerun()
+
+# --- FEYNMAN ---
+elif st.session_state.view == "Feynman":
+    draw_sidebar()
+    st.markdown("<h1 class='main-header'>Feynman Analogy</h1>", unsafe_allow_html=True)
+    st.markdown(f"<div class='content-box'>{st.session_state.agent_data['feynman_text']}</div>", unsafe_allow_html=True)
+    if st.button("RETRY ASSESSMENT", use_container_width=True):
+        st.session_state.attempt += 1
+        res = learning_graph.invoke({"topic": st.session_state.topic, "attempt_count": st.session_state.attempt})
+        st.session_state.agent_data = res; st.session_state.view = "Quiz"; st.rerun()
+
+# --- END VIEW ---
+elif st.session_state.view == "End":
+    draw_sidebar()
+    st.markdown("<h1 class='main-header'>Session Complete</h1>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div class='content-box' style='text-align: center;'>
+            <h2 style='color:#38bdf8;'>Great Work Today, {st.session_state.user}! ✨</h2>
+            <p style='margin-top: 20px;'>
+                "Education is the most powerful weapon which you can use to change the world."
+            </p>
+            <p style='font-style: italic; color: #94a3b8; margin-top: 10px;'>
+                You've taken a significant step in your mastery journey. 
+                Rest your mind, reflect on what you've learned, and come back whenever you're ready for more.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    if st.button("START NEW SESSION", use_container_width=True):
+        st.session_state.view = "Dashboard"; st.rerun()
